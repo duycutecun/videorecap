@@ -1,0 +1,213 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 7860
+  },
+  "agent": {
+    "provider": "codex",
+    "timeout_minutes": 0,
+    "max_retries": 1,
+    "tool_prepares": true,
+    "use_pty": {
+      "agy": true,
+      "codex": false,
+      "claude": false
+    },
+    "models": {
+      "codex": "",
+      "agy": "",
+      "claude": ""
+    },
+    "codex_reasoning": "",
+    "codex_service_tier": "",
+    "model_flags": {
+      "codex": [
+        "-m",
+        "{model}"
+      ],
+      "agy": [
+        "--model",
+        "{model}"
+      ],
+      "claude": [
+        "--model",
+        "{model}"
+      ]
+    },
+    "list_models": {
+      "agy": [
+        "agy",
+        "models"
+      ],
+      "codex": [
+        "codex",
+        "models"
+      ]
+    },
+    "commands": {
+      "codex": [
+        "codex",
+        "exec",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "{prompt}"
+      ],
+      "agy": [
+        "agy",
+        "-p",
+        "{prompt}",
+        "--dangerously-skip-permissions"
+      ],
+      "claude": [
+        "claude",
+        "-p",
+        "{prompt}",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "text"
+      ]
+    },
+    "claude_effort": ""
+  },
+  "transcribe": {
+    "engine": "local",
+    "use_source_subtitles": true,
+    "api_keys": {
+      "groq": "",
+      "openai": ""
+    },
+    "cloud_models": {
+      "groq": "whisper-large-v3-turbo",
+      "openai": "whisper-1"
+    },
+    "cpu_model": "small",
+    "model": "large-v3-turbo",
+    "device": "auto",
+    "compute_type": "auto",
+    "language": "",
+    "speed": "fast",
+    "beam_size": 0,
+    "batch_size": 0,
+    "cpu_threads": 0
+  },
+  "scenes": {
+    "threshold": 0.3,
+    "min_scene_seconds": 1.0,
+    "max_scene_seconds": 0
+  },
+  "frames": {
+    "use_sheets": true,
+    "sheet_interval_seconds": 0.5,
+    "sheet_min_interval": 1.0,
+    "sheet_max_cells": 1800,
+    "sheet_cols": 4,
+    "sheet_rows": 4,
+    "sheet_cell_width": 320,
+    "check_step_seconds": 0.5,
+    "check_max_frames": 12,
+    "check_cell_width": 256,
+    "overview": true,
+    "overview_max_cells": 600,
+    "overview_min_interval": 2,
+    "overview_cols": 5,
+    "overview_rows": 5,
+    "overview_cell_width": 256,
+    "max_frames": 900,
+    "width": 512
+  },
+  "tts": {
+    "provider": "omnivoice",
+    "voice": "",
+    "rate": 1.0,
+    "providers": {
+      "omnivoice": {
+        "url": "http://127.0.0.1:8766",
+        "voice": "Hải Đăng",
+        "num_step": 32,
+        "group": 24
+      },
+      "vieneu": {
+        "voice": "Hải Đăng",
+        "mode": "v3turbo",
+        "workers": 1
+      },
+      "piper": {
+        "model": "models/piper/vi_VN-vais1000-medium.onnx"
+      },
+      "local_command": {
+        "command": []
+      },
+      "edge": {
+        "voice": "vi-VN-HoaiMyNeural"
+      },
+      "openai": {
+        "api_key": "",
+        "model": "gpt-4o-mini-tts",
+        "voice": "alloy"
+      },
+      "elevenlabs": {
+        "api_key": "",
+        "model": "eleven_multilingual_v2",
+        "voice": ""
+      }
+    },
+    "trim_silence": true,
+    "use_pronunciation": true,
+    "pronunciation": {}
+  },
+  "render": {
+    "resolution": 1080,
+    "fps": "auto",
+    "encoder": "auto",
+    "crf": 18,
+    "burn_subtitles": true,
+    "subtitle_font": "Proxima Nova",
+    "subtitle_font_fallbacks": ["DFP King Gothic Medium", "Montserrat"],
+    "subtitle_effect": "auto",
+    "bgm_folder": "assets/bgm",
+    "logo_file": "assets/logo.png",
+    "logo_opacity": 0.7,
+    "logo_width": 0.1875,
+    "bgm_volume": 0.18,
+    "max_clip_seconds": 8.0,
+    "gap_seconds": 0.2,
+    "max_speed_change": 0.06,
+    "smooth_speed": true,
+    "parallel": 0,
+    "quality": "high",
+    "interpolate_fps": 0,
+    "interpolate_mode": "high"
+  },
+  "download": {
+    "max_height": 1080,
+    "cookies_from_browser": "",
+    "cookies_file": ""
+  },
+  "script": {
+    "words_per_minute": {
+      "vi": 165,
+      "en": 150
+    },
+    "sync_tolerance": 0.15,
+    "one_sentence_per_segment": true,
+    "visual_check": true,
+    "auto_min_minutes": 1,
+    "auto_max_minutes": 0,
+    "extend_across_scenes": true,
+    "narration_style": "story",
+    "enforce_style": true
+  },
+  "editors": {
+    "losslesscut_path": ""
+  },
+  "limits": {
+    "max_source_hours": 3
+  },
+  "retention": {
+    "enabled": false,
+    "days": 30
+  }
+}

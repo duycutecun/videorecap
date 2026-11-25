@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Recap</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Video Recap <span id="ver"></span></div>
+  <nav>
+    <button data-tab="new" class="active">Tạo video</button>
+    <button data-tab="jobs">Danh sách</button>
+    <button data-tab="settings">Cài đặt</button>
+    <button data-tab="health">Kiểm tra máy</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============ TẠO MỚI ============ -->
+<section id="tab-new" class="tab active">
+  <h2>Tạo video tóm tắt</h2>
+  <div class="card">
+    <h3>1. Video nguồn</h3>
+    <div class="row">
+      <label class="radio"><input type="radio" name="srcType" value="url" checked> Dán link</label>
+      <label class="radio"><input type="radio" name="srcType" value="file"> Chọn file trên máy</label>
+    </div>
+    <div id="srcUrlBox">
+      <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…  (YouTube, TikTok, Facebook, Bilibili)">
+      <p class="hint">Nếu link không tải được: vào <b>Kiểm tra máy → Cập nhật bộ tải video</b>, hoặc tự tải video về rồi chọn "Chọn file trên máy".</p>
+    </div>
+    <div id="srcFileBox" class="hidden">
+      <div id="drop" class="drop">Kéo thả file video vào đây hoặc <u>bấm để chọn</u><input id="file" type="file" accept="video/*,.mkv"></div>
+      <div id="fileName" class="hint"></div>
+    </div>
+  </div>
+
+  <div class="card grid">
+    <h3 class="full">2. Kiểu video</h3>
+    <label>Loại nội dung
+      <select id="content_type"></select></label>
+    <label>Độ dài video tóm tắt
+      <select id="length">
+        <option value="auto" selected>Để AI tự quyết (theo nội dung)</option>
+        <option value="shorts">Shorts (dưới 1 phút)</option>
+        <option value="short">Ngắn (~6 phút)</option>
+        <option value="medium">Vừa (~12 phút)</option>
+        <option value="long">Dài (~30 phút)</option>
+        <option value="custom">Tự chọn % độ dài (thanh trượt)…</option>
+      </select></label>
+    <div id="customBox" class="hidden full slider-box">
+      <div class="slider-head"><b>Độ dài video tóm tắt: <span id="sliderVal">30%</span></b>
+        <span id="srcDurInfo" class="muted"></span></div>
+      <input id="target_percent" type="range" min="10" max="100" step="5" value="30">
+      <div class="slider-scale"><span>10%</span><span>100% (giữ nguyên độ dài)</span></div>
+    </div>
+    <label>Khung hình
+      <select id="aspect">
+        <option value="16:9">Ngang 16:9 (YouTube)</option>
+        <option value="9:16">Dọc 9:16 (Shorts, TikTok, Reels)</option>
+        <option value="1:1">Vuông 1:1</option>
+      </select></label>
+    <label>Ngôn ngữ lời bình
+      <select id="narration_language">
+        <option value="vi">Tiếng Việt</option>
+        <option value="en">Tiếng Anh</option>
+      </select></label>
+    <label>Giọng văn lời bình
+      <select id="narration_style">
+        <option value="story" selected>Kể chuyện tự nhiên (khuyên dùng)</option>
+        <option value="funny">Hài hước, lém lỉnh</option>
+        <option value="dramatic">Kịch tính, hồi hộp</option>
+        <option value="chill">Nhẹ nhàng, thư giãn</option>
+        <option value="documentary">Tài liệu, nghiêm túc</option>
+      </select></label>
+    <label>Chế độ chạy
+      <select id="mode">
+        <option value="review" selected>Dừng để duyệt kịch bản (khuyên dùng)</option>
+        <option value="auto">Chạy thẳng ra video</option>
+      </select></label>
+  </div>
+
+  <div class="card grid">
+    <h3 class="full">3. AI, giọng đọc, âm thanh</h3>
+    <label>Agent viết kịch bản
+      <select id="agent"></select></label>
+    <label>Model của agent (trống = mặc định của agent)
+      <input id="agent_model" list="agentModelList" placeholder="bấm để chọn hoặc gõ tên model"><datalist id="agentModelList"></datalist></label>
+    <label id="reasonBox">Mức suy luận
+      <select id="agent_reasoning"><option value="">Mặc định</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></label>
+    <label id="tierBox">Chế độ tốc độ (Codex)
+      <select id="agent_service_tier"><option value="">Thường</option><option value="fast">Fast</option></select></label>
+    <label>Nhà cung cấp giọng
+      <select id="tts_provider"></select></label>
+    <label>Giọng (để trống = mặc định)
+      <span class="inline-row"><select id="tts_voice"></select><button type="button" id="btnVoiceTry" title="Nghe thử giọng này">▶</button></span></label>
+    <audio id="voiceTryAudio"></audio>
+    <label>Tốc độ đọc
+      <input id="tts_rate" type="number" min="0.5" max="2" step="0.05" value="1"></label>
+    <label class="check"><input id="burn_subtitles" type="checkbox" checked> Gắn phụ đề vào video</label>
+    <label class="check"><input id="use_bgm" type="checkbox" checked> Nhạc nền (lấy từ thư mục nhạc trong Cài đặt)</label>
+    <label class="full">Yêu cầu thêm cho agent (không bắt buộc)
+      <textarea id="instructions" rows="3" placeholder="vd: Giọng kể hài hước, gọi nhân vật chính là 'anh main', bỏ qua đoạn hồi tưởng…"></textarea></label>
+  </div>
+  <div class="actions">
+    <button id="btnCreate" class="primary">Bắt đầu</button>
+    <span id="createMsg" class="msg"></span>
+  </div>
+</section>
+
+<!-- ============ DANH SÁCH ============ -->
+<section id="tab-jobs" class="tab">
+  <h2>Danh sách video</h2>
+  <div id="jobList"></div>
+</section>
+
+<!-- ============ CHI TIẾT JOB ============ -->
+<section id="tab-job" class="tab">
+  <p><a href="#" id="backToList">← Danh sách</a></p>
+  <div class="job-head">
+    <div>
+      <h2 id="jTitle"></h2>
+      <div><span id="jStatus" class="badge"></span> <span id="jStage" class="muted"></span></div>
+      <div id="jError" class="error hidden"></div>
+      <div id="jWarnings" class="warn hidden"></div>
+    </div>
+    <div class="btns">
+      <button id="btnCancel">Huỷ</button>
+      <button id="btnPolish" title="Giữ nguyên các clip, chỉ viết lại lời bình cho tự nhiên, liền mạch hơn">✍️ Viết lại lời cho tự nhiên</button>
+      <button id="btnRerun">Cho agent viết lại</button>
+      <button id="btnDelete" class="danger">Xoá</button>
+    </div>
+  </div>
+
+  <div id="outputBox" class="card hidden">
+    <h3>Video thành phẩm</h3>
+    <video id="outVideo" controls preload="metadata"></video>
+    <div class="row">
+      <a id="dlMp4" class="button primary" href="#">Tải video (.mp4)</a>
+      <a id="dlSrt" class="button" href="#">Tải phụ đề (.srt)</a>
+    </div>
+  </div>
+
+  <div id="editBox" class="card hidden">
+    <h3>Tự chỉnh sửa</h3>
+    <div class="lc-row">
+      <button id="btnLC" class="primary">✂ Mở bằng LosslessCut</button>
+      <select id="lcFile"></select>
+      <span id="lcMsg" class="hint"></span>
+    </div>
+    <p class="hint">LosslessCut là phần mềm có giao diện (chạy bằng ffmpeg) để cắt, ghép, bỏ đoạn thừa nhanh mà không giảm chất lượng.
+      Video xuất ra từ LosslessCut được lưu ngay trong thư mục <code>output</code> và hiện ở bảng bên dưới.</p>
+    <details><summary><b>Nâng cao: chạy lệnh ffmpeg</b></summary>
+    <p class="hint">Chạy lệnh ffmpeg trên video thành phẩm. Kết quả luôn ghi ra file mới (<code>edit_01.mp4</code>, <code>edit_02.mp4</code>…), video gốc không bị ghi đè.
+      Trong lệnh: <code>{in}</code> là file đầu vào, <code>{out}</code> là file kết quả.</p>
+    <div class="btns" style="margin-bottom:10px">
+      <button id="btnOpenFolder">📁 Mở thư mục video</button>
+      <button id="btnOpenTerm">⌨ Mở cửa sổ lệnh ffmpeg</button>
+    </div>
+    <div class="grid">
+      <label>Mẫu lệnh <select id="ffPreset"><option value="">— chọn mẫu —</option></select></label>
+      <label>File đầu vào <select id="ffInput"></select></label>
+      <label class="full">Lệnh ffmpeg (không cần gõ chữ ffmpeg ở đầu)
+        <textarea id="ffArgs" rows="3" spellcheck="false" placeholder='-ss 10 -to 70 -i "{in}" -c copy "{out}"'></textarea></label>
+    </div>
+    <div class="actions"><button id="btnFfRun" class="primary">Chạy</button><span id="ffMsg" class="msg"></span></div>
+    </details>
+    <div id="outList"></div>
+  </div>
+
+  <div id="scriptBox" class="card hidden">
+    <div class="script-head">
+      <h3>Kịch bản <span id="scriptStats" class="muted"></span></h3>
+      <div id="lengthReason" class="hint full"></div>
+      <div class="btns">
+        <button id="btnAddSeg">+ Thêm đoạn</button>
+        <button id="btnSave">Lưu</button>
+        <button id="btnRender" class="primary">Lưu &amp; Dựng video</button>
+      </div>
+    </div>
+    <p class="hint">Mỗi đoạn = một đoạn lời bình + các clip gốc chiếu trong lúc đọc. Clip ghi dạng <code>giây_bắt_đầu-giây_kết_thúc</code>, nhiều clip cách nhau bằng dấu <code>;</code> — vd <code>12.5-17; 40-43.5</code>. Bấm ▶ để xem trước clip ở khung bên phải.</p>
+    <div class="grid voice-row">
+      <label>Giọng đọc <select id="rTtsProvider"></select></label>
+      <label>Giọng <select id="rTtsVoice"></select></label>
+      <label>Tốc độ đọc <input id="rTtsRate" type="number" min="0.5" max="2" step="0.05"></label>
+      <label>Khung hình <select id="rAspect"><option value="16:9">Ngang 16:9</option><option value="9:16">Dọc 9:16</option><option value="1:1">Vuông 1:1</option></select></label>
+      <label class="check"><input id="rSubs" type="checkbox"> Gắn phụ đề</label>
+      <label class="check"><input id="rBgm" type="checkbox"> Nhạc nền</label>
+    </div>
+    <div id="scriptErrors"></div>
+    <div class="script-layout">
+      <div>
+        <label>Tiêu đề <input id="scriptTitle"></label>
+        <div id="segments"></div>
+      </div>
+      <div class="preview">
+        <video id="srcVideo" controls preload="metadata"></video>
+        <div id="previewInfo" class="hint"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Nhật ký <label class="check inline"><input id="autoScroll" type="checkbox" checked> tự cuộn</label></h3>
+    <pre id="log"></pre>
+  </div>
+</section>
+
+<!-- ============ CÀI ĐẶT ============ -->
+<section id="tab-settings" class="tab">
+  <h2>Cài đặt</h2>
+  <div class="card" id="voiceTry">
+    <h3>🔊 Nghe thử giọng</h3>
+    <p class="muted">Chọn giọng trong danh sách là nghe ngay — không cần tạo job. Lần đầu với VieNeu cần nạp model nên chờ khoảng 30 giây – 1 phút; các lần sau nhanh hơn, câu đã nghe rồi thì phát ngay.</p>
+    <div class="grid">
+      <label>Nhà cung cấp giọng <select id="pvProvider"></select></label>
+      <label>Giọng (chọn là nghe luôn) <select id="pvVoice"></select></label>
+      <label>Tốc độ đọc <input id="pvRate" type="number" min="0.5" max="2" step="0.05" value="1.1"></label>
+      <label class="full">Câu đọc thử <textarea id="pvText" rows="2"></textarea></label>
+    </div>
+    <div class="btns">
+      <button id="pvPlay" class="primary">▶ Nghe thử</button>
+      <button id="pvSetDefault">Đặt làm giọng mặc định</button>
+      <span id="pvMsg" class="muted"></span>
+    </div>
+    <audio id="pvAudio" controls></audio>
+  </div>
+  <div id="settingsForm"></div>
+  <details class="card">
+    <summary>Nâng cao: sửa trực tiếp settings.json</summary>
+    <textarea id="settingsRaw" rows="24" spellcheck="false"></textarea>
+    <button id="btnSaveRaw">Lưu JSON</button>
+  </details>
+  <div class="actions">
+    <button id="btnSaveSettings" class="primary">Lưu cài đặt</button>
+    <span id="settingsMsg" class="msg"></span>
+  </div>
+</section>
+
+<!-- ============ KIỂM TRA MÁY ============ -->
+<section id="tab-health" class="tab">
+  <h2>Kiểm tra máy</h2>
+  <div class="actions">
+    <button id="btnHealth">Kiểm tra lại</button>
+    <button id="btnUpdYtdlp">Cập nhật bộ tải video + giọng Edge</button>
+    <button id="btnUpdTool">Cập nhật tool</button>
+    <button id="btnInstVieneu">Cài VieNeu (giọng Việt tại máy)</button>
+    <button id="btnInstLC">Cài LosslessCut (chỉnh sửa có giao diện)</button>
+  </div>
+  <div id="healthList" class="card"></div>
+  <pre id="updateOut" class="hidden"></pre>
+</section>
+</main>
+
+<dialog id="polishDlg">
+  <h3>Viết lại lời bình cho tự nhiên</h3>
+  <p class="muted">Agent giữ nguyên các clip đã chọn, chỉ viết lại lời cho giống người kể chuyện (có từ nối, cảm xúc,
+    không lặp "Anh…", không tả góc máy), rồi đo lại giọng đọc và soát hình. Kịch bản cũ được lưu ở <code>script.before_polish.json</code>.</p>
+  <label>Giọng văn
+    <select id="polishStyle">
+        <option value="story">Kể chuyện tự nhiên (khuyên dùng)</option>
+        <option value="funny">Hài hước, lém lỉnh</option>
+        <option value="dramatic">Kịch tính, hồi hộp</option>
+        <option value="chill">Nhẹ nhàng, thư giãn</option>
+        <option value="documentary">Tài liệu, nghiêm túc</option>
+    </select></label>
+  <label>Yêu cầu thêm (không bắt buộc)
+    <textarea id="polishNote" rows="3" placeholder="vd: gọi nhân vật là 'anh thợ rừng', thêm vài câu bình luận vui"></textarea></label>
+  <div class="btns"><button id="polishGo" class="primary">Bắt đầu</button> <button id="polishClose">Đóng</button></div>
+</dialog>
+<script src="app.js"></script>
+</body>
+</html>
