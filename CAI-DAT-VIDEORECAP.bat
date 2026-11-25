@@ -4,8 +4,16 @@ setlocal
 title VideoRecap - Cai dat FULL tu dong
 set "VR_SELF=%~f0"
 set "VR_TARGET=%~1"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText($env:VR_SELF,[Text.Encoding]::UTF8); $m='<#'+'VR_SETUP'+'#>'; $n='</'+'VR_SETUP'+'>'; $a=$t.IndexOf($m); $e=$t.IndexOf($n); if($a -lt 0 -or $e -le $a){Write-Host '[LOI] File cai dat bi hong.'; Read-Host; exit 1}; iex $t.Substring($a+$m.Length,$e-$a-$m.Length)"
-exit /b %errorlevel%
+set "PS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS_EXE%" set "PS_EXE=powershell"
+"%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText($env:VR_SELF,[Text.Encoding]::UTF8); $m='<#'+'VR_SETUP'+'#>'; $n='</'+'VR_SETUP'+'>'; $a=$t.IndexOf($m); $e=$t.IndexOf($n); if($a -lt 0 -or $e -le $a){Write-Host '[LOI] File cai dat bi hong.'; Read-Host; exit 1}; iex $t.Substring($a+$m.Length,$e-$a-$m.Length)"
+set "RC=%errorlevel%"
+if not "%RC%"=="0" (
+    echo.
+    echo [LOI] Qua trinh cai dat dung voi ma loi %RC%. Xem thong bao o tren.
+    pause
+)
+exit /b %RC%
 <#VR_SETUP#>
 $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
@@ -15,6 +23,8 @@ try { [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8En
 $RepoGit = "https://github.com/duycutecun/videorecap.git"
 $RepoZip = "https://github.com/duycutecun/videorecap/archive/refs/heads/main.zip"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$PsExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+if (-not (Test-Path $PsExe)) { $PsExe = "powershell" }
 
 function Step($m) { Write-Host ""; Write-Host "==== $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
@@ -57,8 +67,20 @@ Step "1/6  Kiem tra Windows, mang & chon thu muc cai dat"
 if (-not (Has "curl.exe")) { Die "Windows thieu curl.exe (can Windows 10 ban 1803 tro len)." }
 if (-not (Has "tar.exe"))  { Die "Windows thieu tar.exe (can Windows 10 ban 1803 tro len)." }
 
+$netOk = $false
 & curl.exe -sI -L --connect-timeout 15 --fail "https://github.com/duycutecun/videorecap" >$null 2>&1
-if ($LASTEXITCODE -ne 0) {
+if ($LASTEXITCODE -eq 0) { $netOk = $true }
+if (-not $netOk) {
+    & curl.exe -sI -L --ssl-no-revoke --connect-timeout 15 --fail "https://github.com/duycutecun/videorecap" >$null 2>&1
+    if ($LASTEXITCODE -eq 0) { $netOk = $true }
+}
+if (-not $netOk) {
+    try {
+        $null = Invoke-WebRequest -Uri "https://github.com/duycutecun/videorecap" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+        $netOk = $true
+    } catch {}
+}
+if (-not $netOk) {
     Die "Khong ket noi duoc toi GitHub ($RepoGit). Kiem tra mang Wi-Fi/day roi chay lai."
 }
 Ok "Windows & ket noi GitHub san sang"
@@ -84,7 +106,7 @@ if ($Target -match '[^\x21-\x7E]') {
     Die "Duong dan khong hop le (co dau cach hoac dau tieng Viet): $Target"
 }
 try {
-    New-Item -ItemType Directory -Force -Path $Target | Out-Null
+    New-Item -ItemType Directory -Force -Path $Target -ErrorAction Stop | Out-Null
 } catch {
     Die "Khong tao duoc thu muc $Target : $($_.Exception.Message)"
 }
@@ -111,7 +133,7 @@ if (-not (Has "git")) {
 if (Has "git") {
     Ok ("Git: " + (& git --version))
 } else {
-    Warn "Chua cai duoc Git — se tai ma nguon dang ZIP (nut 'Cap nhat tool' trong app se can Git sau)."
+    Warn "Chua cai duoc Git - se tai ma nguon dang ZIP (nut 'Cap nhat tool' trong app se can Git sau)."
 }
 
 # ---------------------------------------------------------------- 3. Tai ma nguon tu GitHub
@@ -119,7 +141,7 @@ Step "3/6  Tai ma nguon VideoRecap tu GitHub"
 $gotSource = $false
 if (Has "git") {
     if (Test-Path (Join-Path $Target ".git")) {
-        Write-Host "     Thu muc da la repo Git — dang cap nhat (git pull)..."
+        Write-Host "     Thu muc da la repo Git - dang cap nhat (git pull)..."
         & git -C $Target pull --ff-only
         if ($LASTEXITCODE -eq 0) { $gotSource = $true; Ok "Da cap nhat ban moi nhat qua Git" }
         else { Warn "git pull khong thanh cong, chuyen sang tai goi ZIP cap nhat de len..." }
@@ -139,14 +161,17 @@ if (Has "git") {
 }
 
 if (-not $gotSource) {
-    $work = Join-Path ([IO.Path]::GetDirectoryName($Target)) ("_vr_tmp_" + [IO.Path]::GetRandomFileName())
-    if (-not $work -or $work -eq "_vr_tmp_") { $work = Join-Path $Target "_vr_tmp_dl" }
+    $workBase = if ($env:TEMP -and (Test-Path $env:TEMP)) { $env:TEMP } else { $Target }
+    $work = Join-Path $workBase ("vr_setup_" + [IO.Path]::GetRandomFileName())
     $zipFile = Join-Path $work "videorecap.zip"
     $extractDir = Join-Path $work "x"
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
     try {
         Write-Host "     Dang tai ZIP tu $RepoZip ..."
         & curl.exe -L --fail --retry 3 --connect-timeout 30 -# -o $zipFile $RepoZip
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zipFile)) {
+            & curl.exe -L --fail --ssl-no-revoke --retry 3 --connect-timeout 30 -# -o $zipFile $RepoZip
+        }
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zipFile)) {
             Die "Tai goi ma nguon tu GitHub that bai."
         }
@@ -173,10 +198,11 @@ if (-not (Test-Path (Join-Path $Target "install.ps1"))) {
 # ---------------------------------------------------------------- 4. Chay install.ps1
 Step "4/6  Cai moi truong Python, FFmpeg, Whisper, Piper, Font & OmniVoice GPU"
 Write-Host "     Buoc nay tai model vai GB, vui long giu cua so nay den khi xong." -ForegroundColor Yellow
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Target "install.ps1")
+& $PsExe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Target "install.ps1")
+$instCode = $LASTEXITCODE
 $venvPy = Join-Path $Target ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPy)) {
-    Die "install.ps1 chua tao duoc .venv\Scripts\python.exe. Xem thong bao loi o tren."
+if ($instCode -ne 0 -or -not (Test-Path $venvPy)) {
+    Die "install.ps1 gap loi (ma $instCode) hoac chua tao duoc .venv\Scripts\python.exe. Xem thong bao o tren."
 }
 Ok "Moi truong VideoRecap da san sang"
 
@@ -208,12 +234,17 @@ function Ensure-Node {
     }
     if (-not (Has "node")) {
         try {
-            $v = (Invoke-RestMethod "https://nodejs.org/dist/index.json" | Where-Object lts | Select-Object -First 1).version
+            $v = (Invoke-RestMethod "https://nodejs.org/dist/index.json" -ErrorAction Stop | Where-Object lts | Select-Object -First 1).version
             $msi = Join-Path $env:TEMP "node-lts.msi"
             & curl.exe -L --fail -o $msi "https://nodejs.org/dist/$v/node-$v-x64.msi"
-            Start-Process msiexec -ArgumentList "/i", "`"$msi`"", "/passive" -Wait
-            Remove-Item $msi -Force -ErrorAction SilentlyContinue
-            Refresh-EnvPath
+            if ($LASTEXITCODE -ne 0) {
+                & curl.exe -L --fail --ssl-no-revoke -o $msi "https://nodejs.org/dist/$v/node-$v-x64.msi"
+            }
+            if (Test-Path $msi) {
+                Start-Process msiexec -ArgumentList "/i", "`"$msi`"", "/passive" -Wait
+                Remove-Item $msi -Force -ErrorAction SilentlyContinue
+                Refresh-EnvPath
+            }
         } catch {}
     }
     return (Has "node")
@@ -243,7 +274,7 @@ switch ($ag.Trim()) {
         }
         Write-Host "     Dang cai Claude Code..."
         try {
-            Invoke-RestMethod "https://claude.ai/install.ps1" | Invoke-Expression
+            Invoke-RestMethod "https://claude.ai/install.ps1" -ErrorAction Stop | Invoke-Expression
             Refresh-EnvPath
         } catch {}
         if (Has "claude") {
@@ -257,14 +288,14 @@ switch ($ag.Trim()) {
         $chosenAgent = "agy"
         Write-Host "     Dang cai Antigravity CLI..."
         try {
-            Invoke-RestMethod "https://antigravity.google/cli/install.ps1" | Invoke-Expression
+            Invoke-RestMethod "https://antigravity.google/cli/install.ps1" -ErrorAction Stop | Invoke-Expression
             Refresh-EnvPath
         } catch {}
         if (Has "agy") {
             Ok "Da cai Antigravity CLI. Cua so moi se mo de DANG NHAP."
             Start-Process cmd -ArgumentList "/k", "agy"
         } else {
-            Warn "Chua thay lenh agy — mo CMD moi roi go: agy"
+            Warn "Chua thay lenh agy - mo CMD moi roi go: agy"
         }
     }
     default {
@@ -306,7 +337,7 @@ try {
     $sc.Save()
     Ok "Da tao loi tat VideoRecap ngoai Desktop"
 } catch {
-    Warn "Khong tao duoc loi tat Desktop — mo truc tiep $Target\run.bat"
+    Warn "Khong tao duoc loi tat Desktop - mo truc tiep $Target\run.bat"
 }
 
 Write-Host ""

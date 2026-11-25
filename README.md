@@ -1,4 +1,4 @@
-# Video Recap Tool — v1.0.3
+# Video Recap Tool — v1.0.4
 
 Tool tạo video tóm tắt kiểu kênh "recap anime/phim" từ link (YouTube, TikTok, Facebook, Bilibili) hoặc từ file video. Tool chạy hoàn toàn trên máy Windows, giao diện mở bằng trình duyệt ở `http://127.0.0.1:7860`. Phần viết kịch bản do agent **Claude Code**, **Codex** hoặc **Antigravity (agy)** đảm nhận, chạy bằng tài khoản của người dùng.
 
@@ -189,6 +189,8 @@ docs/SPEC.md  phạm vi bàn giao và kiến trúc
 ```
 
 ## 10. Lịch sử phiên bản
+
+**v1.0.4** — sửa lỗi mã hóa UTF-8 trong `install.ps1` trên Windows PowerShell 5.1 ở bước cài Python, bổ sung cơ chế dự phòng tải `uv`, kiểm tra lại PyTorch CUDA cho OmniVoice và thêm `.gitattributes` giữ chuẩn CRLF cho `.bat`/`.ps1`.
 
 **v1.0.3** — đóng gói bản phát hành cài full cho máy mới:
 - Tích hợp sẵn dịch vụ giọng clone **OmniVoice GPU** (`omnivoice/` + 14 giọng mẫu Hải Đăng, v.v.), tự khởi động ngầm cùng `run.bat` và tự chờ nạp model.
