@@ -59,7 +59,7 @@ Write-Host ""
 Write-Host "===============================================================" -ForegroundColor Cyan
 Write-Host "  VIDEORECAP - CAI DAT FULL TU DONG (1-CLICK)" -ForegroundColor Cyan
 Write-Host "  Tu tai code tu GitHub -> Python -> FFmpeg -> Whisper -> TTS" -ForegroundColor Cyan
-Write-Host "  Neu may co GPU NVIDIA: tu cai luon OmniVoice + 14 giong mau" -ForegroundColor Cyan
+Write-Host "  Neu may co GPU NVIDIA: tu cai luon OmniVoice (giong Hai Dang)" -ForegroundColor Cyan
 Write-Host "===============================================================" -ForegroundColor Cyan
 
 # ---------------------------------------------------------------- 1. Kiem tra may & chon thu muc

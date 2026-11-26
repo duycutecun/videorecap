@@ -150,19 +150,26 @@ if (-not (Test-Path (Join-Path $Root "tools\7zr.exe"))) {
     Ok "tools\7zr.exe (da co)"
 }
 
-# ---------------------------------------------------------------- 5. Piper + Font phu de
-Step "5/8  Tai giong doc Piper (tieng Viet) & cai Font phu de"
-$pdir = Join-Path $Root "models\piper"
-New-Item -ItemType Directory -Force -Path $pdir | Out-Null
-$base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium"
-try {
-    foreach ($ext in @(".onnx", ".onnx.json")) {
-        $out = Join-Path $pdir ("vi_VN-vais1000-medium" + $ext)
-        if (-not (Test-Path $out)) { Download @($base + $ext + "?download=true") $out }
+# ---------------------------------------------------------------- 5. Font phu de + Piper (CPU / du phong)
+Step "5/8  Cai Font phu de & giong doc du phong (neu can)"
+function Install-PiperVoice {
+    $pdir = Join-Path $Root "models\piper"
+    New-Item -ItemType Directory -Force -Path $pdir | Out-Null
+    $base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/vi/vi_VN/vais1000/medium/vi_VN-vais1000-medium"
+    try {
+        foreach ($ext in @(".onnx", ".onnx.json")) {
+            $out = Join-Path $pdir ("vi_VN-vais1000-medium" + $ext)
+            if (-not (Test-Path $out)) { Download @($base + $ext + "?download=true") $out }
+        }
+        Ok "models\piper\vi_VN-vais1000-medium.onnx"
+    } catch {
+        Warn "Khong tai duoc giong Piper: $($_.Exception.Message). Co the chon giong khac trong Cai dat."
     }
-    Ok "models\piper\vi_VN-vais1000-medium.onnx"
-} catch {
-    Warn "Khong tai duoc giong Piper: $($_.Exception.Message). Co the chon giong khac trong Cai dat."
+}
+if (-not $hasNvidia) {
+    Install-PiperVoice
+} else {
+    Ok "Bo qua tai giong Piper (may co GPU NVIDIA - chi tai giong Hai Dang OmniVoice cho nhe may)"
 }
 
 $fontSrc = Join-Path $Root "assets\fonts"
@@ -278,6 +285,7 @@ if ($hasNvidia) {
             else { Warn "OmniVoice dang nap model ngam - co the mo tool ngay, lan doc dau se tu cho nap xong." }
         }
     } catch {
+        Install-PiperVoice
         Warn "Chua cai xong OmniVoice GPU: $($_.Exception.Message). Tool van dung duoc Piper / Edge TTS."
     }
 } else {

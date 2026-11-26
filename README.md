@@ -29,9 +29,9 @@ Link / file ─► Lấy video ─► [AGENT] prepare (lời thoại · cảnh �
 3. Script sẽ tự động làm toàn bộ từ A→Z:
    - cài Git for Windows (nếu máy chưa có) và tải mã nguồn từ GitHub
    - cài Python 3.11 portable (qua `uv`), thư viện, `ffmpeg` portable và `7zr`
-   - tải giọng đọc `Piper` tiếng Việt và tự đăng ký font phụ đề
+   - đăng ký font phụ đề (và tải giọng `Piper` nếu máy không có GPU NVIDIA)
    - tải model nhận dạng lời thoại `Whisper` (`large-v3-turbo` trên GPU hoặc `small` trên CPU)
-   - nếu máy có **GPU NVIDIA**: tự cài thêm **OmniVoice GPU** (`tools\omni_venv`), tải sẵn model `kjanh/KhanhTTS-OmniVoice` và 14 giọng mẫu (Hải Đăng, v.v.), tự bật ngầm khi chạy
+   - nếu máy có **GPU NVIDIA**: tự cài thêm **OmniVoice GPU** (`tools\omni_venv`), tải sẵn model `kjanh/KhanhTTS-OmniVoice` và giọng mẫu **Hải Đăng**, tự bật ngầm khi chạy
    - hướng dẫn cài & đăng nhập Agent (`Codex` / `Claude Code` / `Antigravity`) và tạo lối tắt **VideoRecap** ngoài Desktop.
 
 ### Cách 2: Clone Git hoặc giải nén thủ công
@@ -116,7 +116,7 @@ Trên trang job đã có video, khung **"Tự chỉnh sửa"** có:
 
 | Nhà cung cấp | Chạy ở đâu | Chi phí | Ghi chú |
 |---|---|---|---|
-| `omnivoice` (mặc định trên GPU) | tại máy (GPU) | miễn phí | clone giọng tự nhiên (kèm sẵn 14 giọng mẫu trong `omnivoice/voices/`, mặc định **Hải Đăng**), tự bật ngầm qua `START-OMNIVOICE.bat` khi mở `run.bat`. Máy không có GPU tự chuyển sang `piper`/`edge` |
+| `omnivoice` (mặc định trên GPU) | tại máy (GPU) | miễn phí | clone giọng tự nhiên (kèm sẵn giọng **Hải Đăng** trong `omnivoice/voices/haidang/`), tự bật ngầm qua `START-OMNIVOICE.bat` khi mở `run.bat`. Máy không có GPU tự chuyển sang `piper`/`edge` |
 | `vieneu` | tại máy | miễn phí | giọng Việt tự nhiên (VieNeu-TTS v3). Cài bằng nút **Kiểm tra máy → Cài VieNeu**; lần đầu tự tải model (cần mạng). Máy CPU yếu thì chọn model `v3nano` trong Cài đặt |
 | `piper` (mặc định) | tại máy | miễn phí | giọng `vi_VN-vais1000-medium`, chất lượng vừa phải |
 | `local_command` | tại máy | miễn phí | gọi bất kỳ TTS nào trên máy (VieNeu, XTTS…) qua mẫu lệnh `{text_file}` `{out_file}` `{voice}` `{python}` |
