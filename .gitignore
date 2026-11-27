@@ -20,3 +20,5 @@ omnivoice/*.log
 omnivoice/STOP
 omnivoice/outputs/
 omnivoice/voices/*/*.pt
+assets/logos/
+DON-DEP-VA-DAY-GIT.bat

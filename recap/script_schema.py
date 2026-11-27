@@ -1,9 +1,8 @@
 """Cấu trúc script.json (kịch bản) và hàm kiểm tra."""
 from __future__ import annotations
 
-import re
-
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -61,15 +60,14 @@ def load(path: Path) -> Script:
 
 
 def count_sentences(text: str) -> int:
-    import re
-    parts = [p for p in re.split(r"(?<=[.!?…])\s+(?=[A-ZÀ-Ỹ\"“(])", text.strip()) if p.strip()]
+    parts = [p for p in re.split(r"(?<=[.!?…])(?<!\b[A-ZĐ]\.)\s+(?=[A-ZÀ-Ỹ\"“(])", text.strip()) if p.strip()]
     return max(1, len(parts))
 
 
 def validate_file(path: Path, source_duration: float, max_clip_seconds: float,
                   target_seconds: Optional[float], words_per_minute: float,
                   auto_bounds: Optional[tuple[float, float]] = None,
-                  one_sentence: bool = False) -> tuple[list[str], list[str], Optional[Script]]:
+                  one_sentence: bool = False, anime: bool = False) -> tuple[list[str], list[str], Optional[Script]]:
     """Trả về (lỗi, cảnh báo, script). Lỗi = phải sửa; cảnh báo = nên xem lại."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -106,8 +104,20 @@ def validate_file(path: Path, source_duration: float, max_clip_seconds: float,
                 errors.append(f"{tag}: clip quá ngắn (< 0.4s)")
             if c.end - c.start > max_clip_seconds + 0.01:
                 warnings.append(f"{tag}: dài {c.end - c.start:.1f}s, vượt mức khuyến nghị {max_clip_seconds:g}s cho mỗi clip gốc")
+    from . import pronounce
+    glossary = None
+    try:
+        glossary = pronounce.load_glossary(path.parent)
+    except ValueError as e:
+        errors.append(str(e))
+    g_err, g_warn = fidelity_checks(sc, glossary, anime)
+    errors.extend(g_err)
+    warnings.extend(g_warn)
+    terms = {t["name"]: t["read"] for t in (glossary or {}).get("terms", []) if t["read"]}
     warnings.extend(style_warnings(sc))
-    warnings.extend(pronunciation_warnings(sc))
+    if anime:
+        warnings.extend(anime_style_warnings(sc))
+    warnings.extend(pronunciation_warnings(sc, terms))
     if target_seconds is None and auto_bounds:
         lo, hi = auto_bounds
         if sc.target_minutes is None:
@@ -163,7 +173,73 @@ def style_warnings(sc: "Script") -> list[str]:
     return out
 
 
-def pronunciation_warnings(sc: "Script") -> list[str]:
+def _has_word(text: str, word: str) -> bool:
+    return re.search(r"(?<![\wÀ-ỹĐđ])" + re.escape(word) + r"(?![\wÀ-ỹĐđ])", text, re.IGNORECASE) is not None
+
+
+def fidelity_checks(sc: "Script", glossary: Optional[dict], anime: bool) -> tuple[list[str], list[str]]:
+    """Chuẩn nguyên tác: tên nhân vật / chiêu thức / địa danh phải viết đúng theo glossary.json của job.
+
+    - SRT hiển thị (narration) dùng đúng chữ `name`; SRT voice (giọng đọc) dùng `read`.
+    - `avoid` = các cách viết sai / tự chế → có trong lời bình là LỖI.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    if glossary is None:
+        if anime:
+            errors.append('Thiếu glossary.json — nội dung anime bắt buộc có bảng tên riêng theo nguyên tác '
+                          '(xem "Anime: source fidelity" trong TASK.md)')
+        return errors, warnings
+    terms = glossary["terms"]
+    if anime and not terms:
+        errors.append("glossary.json chưa có mục nào — liệt kê tên nhân vật, tổ chức, địa danh, chiêu thức theo nguyên tác")
+    if anime and not glossary.get("source"):
+        warnings.append('Nguyên tác: glossary.json chưa ghi "source" (tên tác phẩm gốc + tập/arc)')
+    from . import pronounce
+    vi = (sc.language or "vi") == "vi"
+    for t in terms:
+        if vi and not t["read"] and pronounce.foreign_words(t["name"]):
+            errors.append(f'glossary.json: "{t["name"]}" chưa có "read" (cách đọc kiểu Việt cho giọng máy, vd "Luffy" → "lu phi")')
+    for s in sc.segments:
+        for t in terms:
+            for a in t["avoid"]:
+                if a.lower() != t["name"].lower() and _has_word(s.narration, a):
+                    errors.append(f'segment {s.id}: viết "{a}" — sai so với nguyên tác, phải là "{t["name"]}"')
+            # lời bình là chữ lên hình: không được viết phiên âm ở đây
+            if t["read"] and t["read"].lower() != t["name"].lower() and _has_word(s.narration, t["read"]) \
+                    and len(t["read"].split()) > 1:
+                errors.append(f'segment {s.id}: lời bình (chữ hiển thị) đang viết phiên âm "{t["read"]}" — '
+                              f'phải viết "{t["name"]}"; phiên âm chỉ dùng cho giọng đọc')
+        sp = (s.speak or "").strip()
+        ratio = len(sp.split()) / max(1, len(s.narration.split()))
+        if sp and (ratio < 0.5 or ratio > 2.5):  # phiên âm làm tăng số âm tiết, nên chỉ báo khi lệch hẳn
+            warnings.append(f"Nguyên tác: segment {s.id}: \"speak\" khác xa lời bình — speak phải là CÙNG câu đó, "
+                            f"chỉ đổi cách viết cho giọng đọc")
+    return errors, warnings
+
+
+ANIME_STIFF = ("tiến hành", "thực hiện", "đối tượng", "nhân vật chính của chúng ta", "bộ phim này",
+               "trong video này", "trong tập phim này", "như các bạn đã thấy")
+ANIME_PRONOUN = ("anh ấy", "cô ấy", "ông ấy", "bà ấy", "anh ta", "cô ta")
+
+
+def anime_style_warnings(sc: "Script") -> list[str]:
+    """Văn phong recap anime: không viết kiểu báo cáo, không lạm dụng 'anh ấy/cô ấy'."""
+    out: list[str] = []
+    segs = sc.segments
+    stiff = [s.id for s in segs if any(p in s.narration.lower() for p in ANIME_STIFF)]
+    if stiff:
+        out.append("Giọng văn: đoạn " + ", ".join(map(str, stiff[:30])) + " dùng từ kiểu báo cáo/giới thiệu video "
+                   "(tiến hành, thực hiện, đối tượng, \"trong video này\"...) — kể như người trong cuộc, vào thẳng chuyện")
+    pro = [s.id for s in segs if any(_has_word(s.narration, p) for p in ANIME_PRONOUN)]
+    if len(segs) >= 8 and len(pro) > max(3, len(segs) * 0.12):
+        out.append(f"Giọng văn: {len(pro)}/{len(segs)} đoạn gọi nhân vật bằng \"anh ấy/cô ấy/anh ta\" — văn recap anime "
+                   "gọi bằng TÊN hoặc cậu/cô/hắn/gã/lão/nhóc... đúng vai và tuổi nhân vật. Các đoạn: "
+                   + ", ".join(map(str, pro[:30])))
+    return out
+
+
+def pronunciation_warnings(sc: "Script", terms: Optional[dict] = None) -> list[str]:
     """Lời Việt có từ nước ngoài / viết tắt mà chưa có cách đọc → giọng Việt dễ đọc sai."""
     if (sc.language or "vi") != "vi":
         return []
@@ -172,11 +248,12 @@ def pronunciation_warnings(sc: "Script") -> list[str]:
     for s in sc.segments:
         if (s.speak or "").strip():
             continue
-        fw = pronounce.foreign_words(s.narration)
+        fw = pronounce.foreign_words(s.narration, terms)
         if fw:
             bad.append(f"{s.id} ({', '.join(fw[:4])})")
     if not bad:
         return []
     return ["Phát âm: lời Việt có từ nước ngoài/viết tắt, giọng đọc dễ đọc sai — thay bằng từ Việt, hoặc thêm trường "
-            "\"speak\" ghi cách đọc kiểu Việt (vd \"Ferrari\" → \"phe ra ri\"). Các đoạn: " + "; ".join(bad[:25])
+            "\"speak\" ghi cách đọc kiểu Việt (vd \"Ferrari\" → \"phe ra ri\"); tên riêng của tác phẩm thì thêm vào "
+            "glossary.json kèm \"read\". Các đoạn: " + "; ".join(bad[:25])
             + ("…" if len(bad) > 25 else "")]

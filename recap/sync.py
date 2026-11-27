@@ -62,11 +62,12 @@ def speech_durations(project: Project, script, real_only: bool = False) -> dict[
         except Exception:  # noqa: BLE001
             known = {}
     lang = script.language or "vi"
+    terms = pronounce.job_terms(project.path)
     wpm = (settings.get("script.words_per_minute", {}) or {}).get(lang, 160)
     out: dict[int, tuple[float, bool]] = {}
     for s in script.segments:
         if tts:
-            f = project.f("tts", f"seg_{s.id:03d}_{tts.cache_key(pronounce.spoken_text(s, lang))}.wav")
+            f = project.f("tts", f"seg_{s.id:03d}_{tts.cache_key(pronounce.spoken_text(s, lang, terms))}.wav")
             rel = f"tts/{f.name}"
             if rel in known:
                 out[s.id] = (known[rel], True)
@@ -75,7 +76,7 @@ def speech_durations(project: Project, script, real_only: bool = False) -> dict[
                 out[s.id] = (media.duration(f), True)
                 continue
         if not real_only:
-            out[s.id] = (len(pronounce.spoken_text(s, lang).split()) / wpm * 60, False)
+            out[s.id] = (len(pronounce.spoken_text(s, lang, terms).split()) / wpm * 60, False)
     return out
 
 
@@ -94,6 +95,7 @@ def report(project: Project) -> list[dict]:
     except Exception:  # noqa: BLE001
         tts = None
     rows = []
+    terms = pronounce.job_terms(project.path)
     for s in sc.segments:
         speech, real = sp.get(s.id, (0.0, False))
         need = speech + gap_seconds()
@@ -110,7 +112,7 @@ def report(project: Project) -> list[dict]:
             status = "short"
         audio = None
         if tts:
-            f = project.f("tts", f"seg_{s.id:03d}_{tts.cache_key(pronounce.spoken_text(s, sc.language))}.wav")
+            f = project.f("tts", f"seg_{s.id:03d}_{tts.cache_key(pronounce.spoken_text(s, sc.language, terms))}.wav")
             if f.exists():
                 audio = f"tts/{f.name}"
         rows.append({"id": s.id, "speech": round(speech, 2), "measured": real, "clip": round(clip, 2),
@@ -282,7 +284,7 @@ def _fit_raw(clips: list[tuple[float, float]], need: float, scenes: list[dict],
             return 0.0, end_all
         return max(0.0, sc["start"]), min(end_all, sc["end"])
 
-    missing = extend(need - total, own_scene)
+    extend(need - total, own_scene)
     total = sum(b - a for a, b in clips)
     k = min(1 + _speed_range(), need / total) if total < need else 1.0
     if total * k < need - 0.01 and settings.get("script.extend_across_scenes", True) and src_dur:

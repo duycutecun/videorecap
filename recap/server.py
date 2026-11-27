@@ -102,6 +102,7 @@ def _job_summary(p: Project) -> dict[str, Any]:
         "created": st.get("created"), "updated": st.get("updated"),
         "mode": o.get("mode"), "aspect": o.get("aspect"),
         "has_output": p.f("output", "final.mp4").exists(),
+        "has_voice_srt": p.f("output", "final.voice.srt").exists(),
         "has_script": p.f("script.json").exists(),
         "queued_position": (_queued.index(p.id) + 1) if p.id in _queued else None,
         "is_current": _current["job"] == p.id,
@@ -163,7 +164,57 @@ def meta():
             "burn_subtitles": settings.get("render.burn_subtitles"),
             "bgm_folder": settings.get("render.bgm_folder"),
         },
+        "logos": _logo_names(),
+        "default_logo": bool(_safe_default_logo()),
     }
+
+
+def _logo_names() -> list[str]:
+    from .render import list_logos
+    return list_logos()
+
+
+def _safe_default_logo():
+    from .render import logo_path
+    try:
+        return logo_path("")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@app.get("/api/logos/{name}")
+def get_logo(name: str):
+    """Ảnh logo để xem trước. name = "_default" (logo trong Cài đặt) hoặc tên file trong assets/logos."""
+    from .render import logo_path
+    try:
+        p = logo_path("" if name == "_default" else name)
+    except RuntimeError:
+        p = None
+    if not p or name == "none":
+        raise HTTPException(404, "Không có logo")
+    return FileResponse(p)
+
+
+@app.post("/api/logos")
+async def add_logo(name: str = Form(""), file: UploadFile = File(...)):
+    """Thêm (hoặc thay) logo của một kênh: lưu vào assets/logos/<tên kênh>.<đuôi ảnh>."""
+    from .render import LOGO_EXT, LOGOS_DIR
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in LOGO_EXT:
+        raise HTTPException(400, "Logo phải là file ảnh PNG, WEBP hoặc JPG (nên dùng PNG nền trong suốt).")
+    raw = await file.read()
+    if not raw or len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(400, "File logo trống hoặc lớn hơn 20 MB.")
+    stem = (name or Path(file.filename or "").stem).strip()
+    stem = "".join(c for c in stem if c.isalnum() or c in " -_").strip()[:60]
+    if not stem or stem.lower() == "none":
+        raise HTTPException(400, "Hãy đặt tên kênh cho logo (chữ, số, khoảng trắng, gạch nối).")
+    LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+    for old in LOGOS_DIR.iterdir():  # cùng tên kênh, khác đuôi ảnh → thay logo cũ
+        if old.is_file() and old.stem.lower() == stem.lower() and old.suffix.lower() in LOGO_EXT:
+            old.unlink()
+    (LOGOS_DIR / f"{stem}{ext}").write_bytes(raw)
+    return {"name": f"{stem}{ext}", "logos": _logo_names()}
 
 
 _probe_cache: dict[str, dict] = {}
@@ -355,6 +406,10 @@ async def create_job(options: str = Form("{}"), file: Optional[UploadFile] = Fil
     if url and not url.startswith(("http://", "https://")):
         raise HTTPException(400, "Link phải bắt đầu bằng http:// hoặc https://")
     opts["url"] = url
+    logo = str(opts.get("logo") or "").strip()
+    if logo and logo != "none" and logo not in _logo_names():
+        raise HTTPException(400, f"Logo kênh \"{logo}\" không còn trong assets/logos — chọn lại logo.")
+    opts["logo"] = logo
     proj = Project.create(opts)
     if file is not None and file.filename:
         ext = Path(file.filename).suffix.lower() or ".mp4"
@@ -439,6 +494,25 @@ async def put_script(job_id: str, req: Request):
     return {"errors": errs, "warnings": warns}
 
 
+@app.post("/api/jobs/{job_id}/voice-srt")
+async def post_voice_srt(job_id: str, file: UploadFile = File(...)):
+    """Nạp SRT voice đã sửa tay → ghi cách đọc mới vào kịch bản (dựng lại mới tạo giọng)."""
+    p = _open(job_id)
+    if _current["job"] == job_id or job_id in _queued:
+        raise HTTPException(409, "Job đang chạy, chưa nạp được SRT voice.")
+    from . import voice_srt
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File quá lớn — đây không giống file SRT.")
+    try:
+        res = voice_srt.apply(p, voice_srt.decode(raw))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    errs, warns = pipeline.validate(p)
+    p.update(warnings=warns)
+    return {**res, "errors": errs, "warnings": warns}
+
+
 @app.post("/api/jobs/{job_id}/render")
 async def post_render(job_id: str, req: Request):
     p = _open(job_id)
@@ -448,7 +522,7 @@ async def post_render(job_id: str, req: Request):
         body = {}
     if isinstance(body, dict) and body:
         st = p.state()
-        for k in ("tts_provider", "tts_voice", "tts_rate", "burn_subtitles", "use_bgm", "aspect"):
+        for k in ("tts_provider", "tts_voice", "tts_rate", "burn_subtitles", "use_bgm", "aspect", "logo"):
             if k in body:
                 st["options"][k] = body[k]
         p.write_state(st)
@@ -676,7 +750,8 @@ def get_file(job_id: str, path: str, download: int = 0):
     if download:
         title = (p.state().get("title") or p.id)
         safe = "".join(c for c in title if c.isalnum() or c in " -_").strip()[:80] or p.id
-        name = f"{safe}{target.suffix}"
+        # SRT voice tải về có đuôi .voice.srt để không trùng tên với SRT hiển thị
+        name = f"{safe}{'.voice' if target.name.lower().endswith('.voice.srt') else ''}{target.suffix}"
     return FileResponse(target, filename=name)
 
 

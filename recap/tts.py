@@ -480,6 +480,7 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> list[dict]:
     d = project.f("tts")
     d.mkdir(exist_ok=True)
     tts.log = project.log
+    terms = pronounce.job_terms(project.path)  # tên riêng theo nguyên tác → cách đọc (glossary.json của job)
     project.log(f"Giọng đọc: {tts.provider} / {tts.voice or '(mặc định)'} / tốc độ {tts.rate}")
     if tts.provider == "omnivoice":
         # Gửi mọi đoạn còn thiếu theo lô cho dịch vụ GPU; tốc độ đọc đi thẳng vào model (không atempo)
@@ -487,7 +488,7 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> list[dict]:
         raw_dir.mkdir(exist_ok=True)
         todo = []
         for s in sc.segments:
-            say = pronounce.spoken_text(s, sc.language)
+            say = pronounce.spoken_text(s, sc.language, terms)
             final = d / f"seg_{s.id:03d}_{tts.cache_key(say)}.wav"
             if not final.exists():
                 todo.append((say, final))
@@ -516,7 +517,7 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> list[dict]:
         raw_dir.mkdir(exist_ok=True)
         todo, pairs = [], []
         for s in sc.segments:
-            say = pronounce.spoken_text(s, sc.language)
+            say = pronounce.spoken_text(s, sc.language, terms)
             final = d / f"seg_{s.id:03d}_{tts.cache_key(say)}.wav"
             if not final.exists():
                 raw = raw_dir / f"{final.stem}.raw.wav"
@@ -553,7 +554,7 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> list[dict]:
     for i, s in enumerate(sc.segments, 1):
         if runner and runner.cancelled:
             raise Cancelled()
-        say = pronounce.spoken_text(s, sc.language)
+        say = pronounce.spoken_text(s, sc.language, terms)
         key = tts.cache_key(say)
         out = d / f"seg_{s.id:03d}_{key}.wav"
         if not out.exists():

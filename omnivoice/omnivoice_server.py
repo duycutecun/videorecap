@@ -7,7 +7,17 @@ The voice name is voices/<slug>/name.txt (e.g. "Hải Đăng"); the clone prompt
   POST /tts_batch {"texts":[...],"voice","speed"?,"num_step"?} -> {"items":[{"wav_b64","duration"}],"seconds","sample_rate"}
 """
 import os
-for _k, _v in (("HF_HUB_DISABLE_TELEMETRY", "1"), ("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"), ("PYTHONIOENCODING", "utf-8")):
+for _k, _v in (
+    ("HF_HUB_DISABLE_TELEMETRY", "1"),
+    ("HF_HUB_DISABLE_SYMLINKS_WARNING", "1"),
+    ("PYTHONIOENCODING", "utf-8"),
+    ("OMP_NUM_THREADS", "8"),
+    ("MKL_NUM_THREADS", "8"),
+    ("OPENBLAS_NUM_THREADS", "8"),
+    ("NUMEXPR_NUM_THREADS", "8"),
+    ("NUMBA_NUM_THREADS", "8"),
+    ("OMP_WAIT_POLICY", "PASSIVE"),
+):
     os.environ.setdefault(_k, _v)
 
 _LOCAL_HF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "hf")

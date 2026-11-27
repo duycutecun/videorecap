@@ -101,6 +101,10 @@
       <input id="tts_rate" type="number" min="0.5" max="2" step="0.05" value="1"></label>
     <label class="check"><input id="burn_subtitles" type="checkbox" checked> Gắn phụ đề vào video</label>
     <label class="check"><input id="use_bgm" type="checkbox" checked> Nhạc nền (lấy từ thư mục nhạc trong Cài đặt)</label>
+    <label class="full">Logo kênh (gắn góc trái trên video) — mỗi kênh một logo riêng
+      <span class="inline-row"><select id="logo"></select><button type="button" id="btnLogoAdd" title="Thêm logo cho một kênh mới (PNG nền trong suốt là đẹp nhất). Logo được lưu lại để lần sau chọn">＋ Thêm logo kênh…</button>
+        <img id="logoPreview" alt="" style="height:38px;max-width:140px;object-fit:contain;background:#444;border-radius:6px;padding:3px;display:none"></span></label>
+    <input id="logoFile" type="file" accept=".png,.webp,.jpg,.jpeg,image/*" class="hidden">
     <label class="full">Yêu cầu thêm cho agent (không bắt buộc)
       <textarea id="instructions" rows="3" placeholder="vd: Giọng kể hài hước, gọi nhân vật chính là 'anh main', bỏ qua đoạn hồi tưởng…"></textarea></label>
   </div>
@@ -139,7 +143,10 @@
     <video id="outVideo" controls preload="metadata"></video>
     <div class="row">
       <a id="dlMp4" class="button primary" href="#">Tải video (.mp4)</a>
-      <a id="dlSrt" class="button" href="#">Tải phụ đề (.srt)</a>
+      <a id="dlSrt" class="button" href="#" title="Chữ lên hình: tên riêng viết đúng nguyên tác">Tải SRT hiển thị</a>
+      <a id="dlVoiceSrt" class="button hidden" href="#" title="Đúng chữ đã gửi cho giọng đọc: tên riêng viết theo cách đọc">Tải SRT voice</a>
+      <button id="btnVoiceSrt" type="button" class="hidden" title="Tải SRT voice về, sửa chữ cho giọng đọc đúng ý (không thêm/bớt dòng), rồi nạp lại ở đây. Sau đó bấm Lưu &amp; Dựng video: chỉ đoạn đã sửa mới tạo lại giọng">Nạp SRT voice đã sửa…</button>
+      <input id="voiceSrtFile" type="file" accept=".srt,text/plain" class="hidden">
     </div>
   </div>
 
@@ -188,6 +195,7 @@
       <label>Khung hình <select id="rAspect"><option value="16:9">Ngang 16:9</option><option value="9:16">Dọc 9:16</option><option value="1:1">Vuông 1:1</option></select></label>
       <label class="check"><input id="rSubs" type="checkbox"> Gắn phụ đề</label>
       <label class="check"><input id="rBgm" type="checkbox"> Nhạc nền</label>
+      <label>Logo kênh <select id="rLogo"></select></label>
     </div>
     <div id="scriptErrors"></div>
     <div class="script-layout">

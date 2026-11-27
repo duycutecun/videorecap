@@ -13,7 +13,7 @@ async function api(path, opts = {}) {
 const jsonOpts = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 const STATUS = { queued: "Đang chờ", running: "Đang chạy", review: "Chờ duyệt", rendering: "Đang dựng", done: "Xong", error: "Lỗi", cancelled: "Đã huỷ" };
-const PRESET_LABEL = { film: "Phim / Anime có cốt truyện", show: "Show / Truyền hình", lecture: "Bài giảng / Podcast", game: "Game / Esports", vlog: "Vlog / Du lịch / Tài liệu" };
+const PRESET_LABEL = { anime: "Anime / Donghua — chuẩn nguyên tác, 2 file SRT", film: "Phim / Drama có cốt truyện", show: "Show / Truyền hình", lecture: "Bài giảng / Podcast", game: "Game / Esports", vlog: "Vlog / Du lịch / Tài liệu" };
 const TTS_LABEL = { omnivoice: "OmniVoice — clone giọng, chạy GPU (nhanh nhất, cần bật dịch vụ)", vieneu: "VieNeu — giọng Việt tự nhiên, tại máy (miễn phí)", piper: "Piper — chạy tại máy (miễn phí)", local_command: "Lệnh TTS tại máy (VieNeu…)", edge: "Edge online (miễn phí, cần mạng)", openai: "OpenAI (API key)", elevenlabs: "ElevenLabs (API key)" };
 const WPM = { vi: 165, en: 150 };
 let META = null;
@@ -35,14 +35,56 @@ function route() {
   else showTab(h);
 }
 
+// ---------------- logo kênh ----------------
+const LOGO_KEY = "recap_logo";
+function logoLabel(f) { return f.replace(/\.[^.]+$/, ""); }
+function fillLogos(selected) {
+  const logos = META.logos || [];
+  const opts = [`<option value="">${META.default_logo ? "Logo mặc định (trong Cài đặt)" : "Mặc định (Cài đặt chưa có logo → không gắn)"}</option>`,
+    ...logos.map((f) => `<option value="${esc(f)}">Kênh: ${esc(logoLabel(f))}</option>`),
+    `<option value="none">Không gắn logo</option>`];
+  const sel = $("#logo");
+  sel.innerHTML = opts.join("");
+  sel.value = selected != null && [...sel.options].some((o) => o.value === selected) ? selected : "";
+  showLogoPreview();
+}
+function showLogoPreview() {
+  const v = $("#logo").value, img = $("#logoPreview");
+  const src = v === "none" || (!v && !META.default_logo) ? "" : `/api/logos/${encodeURIComponent(v || "_default")}?t=${Date.now()}`;
+  img.style.display = src ? "" : "none";
+  if (src) img.src = src;
+}
+$("#logo").addEventListener("change", () => {
+  try { localStorage.setItem(LOGO_KEY, $("#logo").value); } catch { /* bỏ qua */ }
+  showLogoPreview();
+});
+$("#btnLogoAdd").addEventListener("click", () => { $("#logoFile").value = ""; $("#logoFile").click(); });
+$("#logoFile").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const name = prompt("Tên kênh dùng logo này (trùng tên kênh đã có thì thay logo cũ):", f.name.replace(/\.[^.]+$/, ""));
+  if (name === null) return;
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("file", f);
+  try {
+    const r = await api("/api/logos", { method: "POST", body: fd });
+    META.logos = r.logos;
+    fillLogos(r.name);
+    try { localStorage.setItem(LOGO_KEY, r.name); } catch { /* bỏ qua */ }
+  } catch (e) { alert("Không thêm được logo: " + e.message); }
+});
+
 // ---------------- tạo mới ----------------
 async function initMeta() {
   META = await api("/api/meta");
   $("#ver").textContent = "v" + META.version;
   $("#content_type").innerHTML = META.presets.map((p) => `<option value="${esc(p)}">${esc(PRESET_LABEL[p] || p)}</option>`).join("");
+  if (META.presets.includes("film")) $("#content_type").value = "film";  // giữ mặc định cũ; chọn Anime khi làm ngách anime
   $("#agent").innerHTML = META.agents.map((a) => `<option value="${esc(a)}">${esc(a === "agy" ? "Antigravity (agy)" : a === "codex" ? "Codex" : a === "claude" ? "Claude Code" : a)}</option>`).join("");
   $("#agent").value = META.defaults.agent || META.agents[0];
   onAgentChange();
+  fillLogos(localStorage.getItem("recap_logo"));
   const ttsOpts = META.tts_providers.map((p) => {
     const st = (META.tts_status || {})[p] || { ok: true };
     return `<option value="${esc(p)}" ${st.ok ? "" : "disabled"}>${esc(TTS_LABEL[p] || p)}${st.ok ? "" : " — " + esc(st.note)}</option>`;
@@ -151,6 +193,7 @@ $("#btnCreate").addEventListener("click", () => {
     tts_rate: Number($("#tts_rate").value) || 1,
     burn_subtitles: $("#burn_subtitles").checked,
     use_bgm: $("#use_bgm").checked,
+    logo: $("#logo").value,
     instructions: $("#instructions").value,
   };
   const file = useFile ? $("#file").files[0] : null;
@@ -250,6 +293,9 @@ async function refreshJob(id) {
     $("#outVideo").src = `/api/jobs/${id}/file?path=output/final.mp4&t=${t}`;
     $("#dlMp4").href = `/api/jobs/${id}/file?path=output/final.mp4&download=1`;
     $("#dlSrt").href = `/api/jobs/${id}/file?path=output/final.srt&download=1`;
+    $("#dlVoiceSrt").href = `/api/jobs/${id}/file?path=output/final.voice.srt&download=1`;
+    $("#dlVoiceSrt").classList.toggle("hidden", !JOB.has_voice_srt);
+    $("#btnVoiceSrt").classList.toggle("hidden", !JOB.has_voice_srt);
     outputLoadedFor = JOB.updated;
   }
 
@@ -275,6 +321,26 @@ $("#btnRerun").addEventListener("click", async () => {
     await api(`/api/jobs/${JOB.id}/rerun`, jsonOpts("POST", { instructions: ins, new_script: true }));
     scriptLoadedFor = null; refreshJob(JOB.id);
   } catch (e) { alert(e.message); }
+});
+
+// Nạp lại SRT voice đã sửa tay: mỗi dòng = cách đọc của một đoạn
+$("#btnVoiceSrt").addEventListener("click", () => {
+  if (dirty && !confirm("Kịch bản đang có chỗ sửa chưa lưu — nạp SRT voice sẽ bỏ các chỗ sửa đó. Tiếp tục?")) return;
+  $("#voiceSrtFile").value = "";
+  $("#voiceSrtFile").click();
+});
+$("#voiceSrtFile").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await api(`/api/jobs/${JOB.id}/voice-srt`, { method: "POST", body: fd });
+    if (!r.changed.length) alert("SRT voice này giống hệt cách đọc hiện tại — không có đoạn nào thay đổi.");
+    else alert(`Đã cập nhật cách đọc cho ${r.changed.length}/${r.total} đoạn (đoạn ${r.changed.slice(0, 20).join(", ")}${r.changed.length > 20 ? "…" : ""}).\nBấm "Lưu & Dựng video" ở khung kịch bản để tạo giọng mới — chỉ các đoạn này phải tạo lại giọng.`
+      + (r.errors.length ? "\n\nKịch bản đang có lỗi: " + r.errors.slice(0, 3).join("; ") : ""));
+    scriptLoadedFor = null; dirty = false; refreshJob(JOB.id);
+  } catch (e) { alert("Không nạp được SRT voice: " + e.message); }
 });
 
 $("#btnPolish").addEventListener("click", () => {
@@ -359,6 +425,12 @@ async function loadScript(id) {
   $("#rAspect").value = o.aspect || "16:9";
   $("#rSubs").checked = o.burn_subtitles !== false;
   $("#rBgm").checked = o.use_bgm !== false;
+  const cur = o.logo || "", names = META.logos || [];
+  $("#rLogo").innerHTML = `<option value="">Logo mặc định (Cài đặt)</option>`
+    + names.map((f) => `<option value="${esc(f)}">Kênh: ${esc(logoLabel(f))}</option>`).join("")
+    + (cur && cur !== "none" && !names.includes(cur) ? `<option value="${esc(cur)}">⚠ ${esc(logoLabel(cur))} (đã mất file)</option>` : "")
+    + `<option value="none">Không gắn logo</option>`;
+  $("#rLogo").value = cur;
   $("#srcVideo").src = `/api/jobs/${id}/source`;
   await loadSync();
   renderScript(); showScriptErrors(data.errors, data.warnings);
@@ -382,7 +454,7 @@ function renderScript() {
         <span class="meta">${syncBadge(s.id, words, lang)}</span>
         <span class="seg-tools"><button data-act="up" title="Lên">↑</button><button data-act="down" title="Xuống">↓</button><button data-act="del" title="Xoá đoạn">✕</button></span></div>
       <textarea class="narr" rows="2">${esc(s.narration)}</textarea>
-      <input class="speak" placeholder="Đọc là (không bắt buộc) — cách đọc cho giọng máy khi có từ tiếng Anh, vd: phe ra ri. Phụ đề vẫn giữ lời bình ở trên" value="${esc(s.speak || "")}">
+      <input class="speak" placeholder="Đọc là (không bắt buộc) — cách đọc cho giọng máy khi có từ tiếng Anh, vd: phe ra ri. SRT hiển thị vẫn giữ lời bình ở trên, ô này đi vào SRT voice" value="${esc(s.speak || "")}">
       ${SYNC[s.id] && SYNC[s.id].note ? `<div class="seen ${SYNC[s.id].note.matches === false ? "bad" : ""}">👁 AI thấy trên hình: ${esc(SYNC[s.id].note.on_screen)}</div>` : ""}
       <div class="seg-row">
         <label>Clip gốc <input class="clips" value="${esc(clipsToText(s.clips))}"></label>
@@ -477,7 +549,7 @@ $("#btnRender").addEventListener("click", async () => {
     await api(`/api/jobs/${JOB.id}/render`, jsonOpts("POST", {
       tts_provider: $("#rTtsProvider").value, tts_voice: $("#rTtsVoice").value.trim(),
       tts_rate: Number($("#rTtsRate").value) || 1, aspect: $("#rAspect").value,
-      burn_subtitles: $("#rSubs").checked, use_bgm: $("#rBgm").checked,
+      burn_subtitles: $("#rSubs").checked, use_bgm: $("#rBgm").checked, logo: $("#rLogo").value,
     }));
     refreshJob(JOB.id);
   } catch (e) { showScriptErrors([e.message], []); }

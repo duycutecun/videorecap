@@ -5,11 +5,10 @@ import hashlib
 import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional
 
-from . import media, settings
+from . import media, pronounce, settings
 from .paths import IS_WINDOWS, ROOT
 from .project import Cancelled, ProcessRunner, Project
 from .script_schema import load
@@ -43,15 +42,16 @@ def fit_filter(inp: str, out: str, w: int, h: int, mode: str) -> str:
 
 
 def split_subtitles(text: str, max_words: int = 12) -> list[str]:
-    parts = [p.strip() for p in re.split(r"(?<=[.!?…;:])\s+", text) if p.strip()]
+    parts = [p.strip() for p in re.split(r"(?<=[.!?…;:])(?<!\b[A-ZĐ]\.)\s+", text) if p.strip()]
     chunks: list[str] = []
     for p in parts:
         words = p.split()
         while len(words) > max_words:
-            # cắt ở dấu phẩy gần nhất nếu có
-            cut = max_words
+            # chia đều số từ cho các dòng còn lại (không để sót dòng cuối chỉ 1-2 từ), ưu tiên cắt ở dấu phẩy
+            lines_left = -(-len(words) // max_words)
+            cut = min(max_words, -(-len(words) // lines_left))
             for k in range(max_words, max_words // 2, -1):
-                if words[k - 1].endswith(","):
+                if k < len(words) - 1 and words[k - 1].endswith(","):
                     cut = k
                     break
             chunks.append(" ".join(words[:cut]))
@@ -290,13 +290,43 @@ def _tool_path(p: str) -> Path:
     return q if q.is_absolute() else ROOT / q
 
 
-def logo_spec(w: int, h: int) -> Optional[tuple[Path, int, int, float]]:
-    """(file logo, chiều rộng logo, lề, độ đậm) — logo đặt góc trái trên. None = không gắn logo."""
+LOGOS_DIR = ROOT / "assets" / "logos"
+LOGO_EXT = (".png", ".webp", ".jpg", ".jpeg")
+
+
+def list_logos() -> list[str]:
+    """Logo của từng kênh: các file ảnh trong assets/logos (tên file = tên kênh)."""
+    if not LOGOS_DIR.is_dir():
+        return []
+    return sorted((f.name for f in LOGOS_DIR.iterdir() if f.is_file() and f.suffix.lower() in LOGO_EXT),
+                  key=str.lower)
+
+
+def logo_path(choice: Optional[str]) -> Optional[Path]:
+    """File logo cho một job. choice: "" / None = logo mặc định trong Cài đặt; "none" = không gắn;
+    còn lại = tên file trong assets/logos (logo của kênh đã chọn lúc tạo video)."""
+    choice = (choice or "").strip()
+    if choice == "none":
+        return None
+    if choice:
+        if "/" in choice or "\\" in choice or ".." in choice:
+            raise RuntimeError(f"Tên logo không hợp lệ: {choice}")
+        p = LOGOS_DIR / choice
+        if not p.is_file():
+            raise RuntimeError(f"Không tìm thấy logo kênh \"{choice}\" trong assets/logos — chọn lại logo ở khung kịch bản "
+                               f"(hoặc thêm lại logo này ở trang Tạo video) rồi dựng lại.")
+        return p
     f = settings.get("render.logo_file", "")
     if not f:
         return None
-    path = _tool_path(f)
-    if not path.is_file():
+    p = _tool_path(f)
+    return p if p.is_file() else None
+
+
+def logo_spec(w: int, h: int, choice: Optional[str] = None) -> Optional[tuple[Path, int, int, float]]:
+    """(file logo, chiều rộng logo, lề, độ đậm) — logo đặt góc trái trên. None = không gắn logo."""
+    path = logo_path(choice)
+    if path is None:
         return None
     try:
         op = float(settings.get("render.logo_opacity", 0.7))
@@ -355,7 +385,7 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> Path:
     font_bold = True
     effect = subtitle_effect(project.id)
     vertical = h > w
-    logo = logo_spec(w, h)
+    logo = logo_spec(w, h, project.options.get("logo"))
     font_size = 11 if vertical else 16
     margin_v = 70 if vertical else 22
     src_audio = bool(st.get("source_has_audio", True))
@@ -383,7 +413,9 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> Path:
     src_dur = float(st.get("source_duration") or media.duration(src))
     seg_files: list[str] = []
     jobs: list[tuple[int, list[str], str, float]] = []  # (id, lệnh ffmpeg, file ra, độ dài)
-    all_cues: list[tuple[float, float, str]] = []
+    all_cues: list[tuple[float, float, str]] = []    # SRT hiển thị: chữ lên hình (tên viết đúng nguyên tác, dòng ngắn)
+    voice_cues: list[tuple[float, float, str]] = []  # SRT voice: đúng chữ đã gửi cho giọng đọc, mỗi đoạn một dòng
+    terms = pronounce.job_terms(project.path)
     timeline = 0.0
     for n, seg in enumerate(sc.segments, 1):
         if runner.cancelled:
@@ -480,6 +512,8 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> Path:
         seg_files.append(out_name)
         for a, b, c in write_srt(split_subtitles(seg.narration), speech, timeline + lead):
             all_cues.append((a, b, c))
+        voice_cues.append((timeline + lead, timeline + lead + speech,
+                           " ".join(pronounce.spoken_text(seg, sc.language, terms).split())))
         timeline += D
 
     # Dựng các đoạn SONG SONG (mỗi đoạn độc lập, chỉ ghép ở cuối) — GPU/CPU không phải chờ nhau
@@ -549,5 +583,6 @@ def run(project: Project, runner: Optional[ProcessRunner] = None) -> Path:
         if rc != 0:
             raise RuntimeError("ffmpeg lỗi khi xuất video cuối.")
     project.f("output", "final.srt").write_text(cues_to_srt(all_cues), encoding="utf-8")
+    project.f("output", "final.voice.srt").write_text(cues_to_srt(voice_cues), encoding="utf-8")
     project.log(f"XONG: output/final.mp4 — dài {media.fmt_ts(timeline)}")
     return final

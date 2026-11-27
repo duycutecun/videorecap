@@ -64,7 +64,8 @@ def validate(project: Project) -> tuple[list[str], list[str]]:
                                    float(settings.get("render.max_clip_seconds", 8.0)),
                                    tsec, wpm,
                                    agent.auto_bounds(src) if agent.is_auto_length(opts) else None,
-                                   bool(settings.get("script.one_sentence_per_segment", True)))
+                                   bool(settings.get("script.one_sentence_per_segment", True)),
+                                   anime=agent.is_anime(opts))
     return errs, warns
 
 
@@ -98,7 +99,7 @@ def run_job(project: Project, runner: ProcessRunner, file_path=None) -> None:
             agent.run_agent(project, runner, prompt=prompt)
             errs, warns = validate(project)
             note_errs = check_notes_problems(project) if not errs else []
-            style = [w for w in warns if w.startswith(("Giọng văn", "Phát âm"))]
+            style = [w for w in warns if w.startswith(("Giọng văn", "Phát âm", "Nguyên tác"))]
             if not errs and not note_errs and style and attempt < retries and settings.get("script.enforce_style", True):
                 note_errs = style  # lời bình còn khô → cho agent sửa thêm một lượt
             if not errs and not note_errs:

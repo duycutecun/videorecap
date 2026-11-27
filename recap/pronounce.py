@@ -9,6 +9,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
+import json
+from pathlib import Path
+from typing import Optional
+
 from . import settings
 
 # Cách đọc phổ biến trong tiếng Việt. Khoá không phân biệt hoa thường.
@@ -65,18 +69,59 @@ DEFAULT_VI: dict[str, str] = {
 _WORD = re.compile(r"[A-Za-zÀ-ỹĐđ0-9][A-Za-zÀ-ỹĐđ0-9'’\-]*")
 
 
-def _entries() -> dict[str, str]:
-    """{từ gốc (giữ hoa/thường): cách đọc}; cài đặt của khách ghi đè mặc định."""
+def _entries(extra: Optional[dict] = None) -> dict[str, str]:
+    """{từ gốc (giữ hoa/thường): cách đọc}; cài đặt của khách ghi đè mặc định; bảng tên riêng của job ghi đè cả hai."""
     d = dict(DEFAULT_VI)
     user = settings.get("tts.pronunciation", {}) or {}
-    if isinstance(user, dict):
-        for k, v in user.items():
-            k = str(k).strip()
-            if k:
-                for old in [x for x in d if x.lower() == k.lower()]:
-                    d.pop(old)
-                d[k] = str(v).strip()
+    for src in (user, extra or {}):
+        if isinstance(src, dict):
+            for k, v in src.items():
+                k = str(k).strip()
+                if k and str(v).strip():
+                    for old in [x for x in d if x.lower() == k.lower()]:
+                        d.pop(old)
+                    d[k] = str(v).strip()
     return d
+
+
+# --- bảng tên riêng / thuật ngữ theo nguyên tác của từng job (glossary.json) ----------
+GLOSSARY_FILE = "glossary.json"
+
+
+def load_glossary(job_dir: Path) -> Optional[dict]:
+    """Đọc glossary.json trong thư mục job. None = chưa có; ném ValueError nếu file hỏng."""
+    f = Path(job_dir) / GLOSSARY_FILE
+    if not f.exists():
+        return None
+    from .media import read_text_any
+    try:
+        data = json.loads(read_text_any(f))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"glossary.json không phải JSON hợp lệ: {e}") from e
+    if isinstance(data, list):
+        data = {"terms": data}
+    if not isinstance(data, dict) or not isinstance(data.get("terms"), list):
+        raise ValueError('glossary.json phải có dạng {"source": "...", "terms": [ {"name": ..., "read": ...} ]}')
+    terms = []
+    for t in data["terms"]:
+        if not isinstance(t, dict) or not str(t.get("name", "")).strip():
+            continue
+        avoid = t.get("avoid") or []
+        if isinstance(avoid, str):
+            avoid = [avoid]
+        terms.append({"name": str(t["name"]).strip(), "read": str(t.get("read") or "").strip(),
+                      "type": str(t.get("type") or "").strip(), "note": str(t.get("note") or "").strip(),
+                      "avoid": [str(a).strip() for a in avoid if str(a).strip()]})
+    return {"source": str(data.get("source") or "").strip(), "terms": terms}
+
+
+def job_terms(job_dir: Path) -> dict[str, str]:
+    """{tên viết đúng nguyên tác: cách đọc} của job — dùng cho giọng đọc (SRT voice)."""
+    try:
+        g = load_glossary(job_dir)
+    except ValueError:
+        return {}
+    return {t["name"]: t["read"] for t in (g or {}).get("terms", []) if t["read"]}
 
 
 def dictionary() -> dict[str, str]:
@@ -88,11 +133,11 @@ def _is_acronym(k: str) -> bool:
     return len(k) >= 2 and k.isupper()
 
 
-def apply(text: str, lang: str = "vi") -> str:
+def apply(text: str, lang: str = "vi", extra: Optional[dict] = None) -> str:
     """Thay các từ có trong từ điển (nguyên từ). Viết tắt hoa thì khớp đúng hoa; từ thường thì không phân biệt."""
     if (lang or "vi") != "vi" or not settings.get("tts.use_pronunciation", True):
         return text
-    e = _entries()
+    e = _entries(extra)
     if not e:
         return text
     b = r"(?<![\wÀ-ỹĐđ])({})(?![\wÀ-ỹĐđ])"
@@ -107,10 +152,10 @@ def apply(text: str, lang: str = "vi") -> str:
     return text
 
 
-def spoken_text(seg, lang: str = "vi") -> str:
-    """Chữ thật sự gửi cho giọng đọc."""
+def spoken_text(seg, lang: str = "vi", extra: Optional[dict] = None) -> str:
+    """Chữ thật sự gửi cho giọng đọc (= nội dung SRT voice). `extra` = bảng tên riêng của job."""
     base = (getattr(seg, "speak", None) or "").strip() or seg.narration
-    return apply(base, lang)
+    return apply(base, lang, extra)
 
 
 # --- nhận ra từ không phải tiếng Việt -------------------------------------------------
@@ -125,9 +170,12 @@ def _strip_marks(w: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", w) if unicodedata.category(c) != "Mn")
 
 
-def foreign_words(text: str) -> list[str]:
+def foreign_words(text: str, extra: Optional[dict] = None) -> list[str]:
     """Từ có vẻ là tiếng nước ngoài / viết tắt (giọng Việt dễ đọc sai). Từ đã có trong từ điển thì bỏ qua."""
-    e = _entries()
+    e = _entries(extra)
+    # tên nhiều chữ trong bảng tên riêng ("Monkey D. Luffy") đã có cách đọc → bỏ ra trước khi xét từng từ
+    for k in sorted((k for k in e if " " in k or "-" in k or "." in k), key=len, reverse=True):
+        text = re.sub(r"(?<![\wÀ-ỹĐđ])" + re.escape(k) + r"(?![\wÀ-ỹĐđ])", " ", text, flags=re.IGNORECASE)
     d = {k.lower(): v for k, v in e.items() if not _is_acronym(k)}
     out: list[str] = []
     for w in _WORD.findall(text):

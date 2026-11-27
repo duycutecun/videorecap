@@ -135,6 +135,35 @@ Trên trang job đã có video, khung **"Tự chỉnh sửa"** có:
 
 Đoạn nào không đổi lời bình thì tool dùng lại file giọng cũ, nên sửa một đoạn rồi dựng lại sẽ không phải tạo lại toàn bộ giọng đọc.
 
+### Logo theo kênh
+
+Làm nhiều kênh thì mỗi kênh một logo: ở trang **Tạo video → Logo kênh** bấm **＋ Thêm logo kênh…**, chọn file ảnh (PNG nền trong suốt là đẹp nhất) và đặt tên kênh. Logo được lưu vào `assets/logos/<tên kênh>.png` và hiện trong danh sách cho các lần sau; tool nhớ kênh chọn lần trước. Danh sách còn có **Logo mặc định** (file trong Cài đặt → `render.logo_file`) và **Không gắn logo**. Muốn đổi logo của video đã có kịch bản: chọn lại ở ô **Logo kênh** trong khung kịch bản rồi bấm **Lưu & Dựng video**. Vị trí (góc trái trên), độ đậm và kích thước logo vẫn chỉnh chung trong Cài đặt. Xoá một kênh: xoá file của nó trong `assets/logos`.
+
+### Ngách Anime / Donghua: 2 file SRT và quy định chuẩn nguyên tác
+
+Chọn **Loại nội dung → Anime / Donghua** khi tạo video. Mỗi lần dựng (mọi loại nội dung) tool xuất 2 file phụ đề:
+
+| File | Dùng để | Nội dung |
+|---|---|---|
+| `output/final.srt` — **SRT hiển thị** | chữ chèn lên hình, đăng kèm video | lời bình, tên riêng viết đúng nguyên tác (`Luffy`, `Gomu Gomu no Pistol`), ngắt dòng ngắn |
+| `output/final.voice.srt` — **SRT voice** | kiểm tra / đưa cho giọng đọc khác | đúng chữ đã gửi cho giọng đọc (`lu phi`, `gô mư gô mư nô pít tồ`), mỗi đoạn một dòng, khớp thời lượng giọng |
+
+Với loại Anime, agent bắt buộc lập **`glossary.json`** trong thư mục job trước khi viết kịch bản — bảng tên nhân vật, tổ chức, địa danh, chiêu thức theo nguyên tác:
+
+```json
+{"source": "One Piece - tập 1",
+ "terms": [{"name": "Luffy", "read": "lu phi", "type": "character", "avoid": ["Rufi", "Luffi"]}]}
+```
+
+- `name` = cách viết chuẩn (anime Nhật: tên romaji chính thức; donghua: tên Hán Việt). Lời bình và SRT hiển thị dùng đúng chữ này.
+- `read` = cách đọc kiểu Việt; tool tự thay vào chữ gửi cho giọng đọc và SRT voice (không cần điền ô "Đọc là" cho từng đoạn).
+- `avoid` = các cách viết sai. `validate` báo **ERROR** khi: thiếu `glossary.json`, tên chưa có `read`, lời bình dùng cách viết trong `avoid`, hoặc lời bình viết phiên âm thay cho tên gốc.
+- Sửa `glossary.json` bằng tay được; đoạn nào đổi cách đọc thì lần dựng sau chỉ tạo lại giọng đoạn đó.
+
+**Sửa SRT voice bằng tay:** ở khung Video thành phẩm bấm **Tải SRT voice**, mở bằng Notepad và sửa chữ cho giọng đọc đúng ý (chỉ sửa chữ — không thêm, bớt, gộp, tách dòng), rồi bấm **Nạp SRT voice đã sửa…**. Tool ghi các dòng đã đổi vào ô "Đọc là" của đúng đoạn đó; bấm **Lưu & Dựng video** thì chỉ những đoạn này tạo lại giọng. SRT hiển thị không đổi.
+
+Quy định nội dung và văn phong cho agent nằm ở `presets/anime.md` (sửa được): chỉ kể những gì có trong video, không thêm tình tiết từ tập khác/manga, không đổi thứ tự và kết quả sự kiện; giọng kể kịch tính kiểu recap anime, gọi nhân vật bằng tên hoặc cậu/cô/hắn/gã/lão. `validate` cảnh báo khi lời bình viết kiểu báo cáo hoặc lạm dụng "anh ấy/cô ấy".
+
 **Nhạc nền:** bỏ file nhạc (mp3, wav, m4a…) vào một thư mục, rồi điền đường dẫn thư mục đó vào **Cài đặt → Thư mục nhạc nền**. Nhạc tự giảm âm lượng khi có lời đọc và tự nhỏ dần ở cuối video. Tool chỉ dùng nhạc trong thư mục này, không tự đi tìm nhạc.
 
 ## 6. Bộ lệnh `recap` (agent dùng; dev cũng dùng được)
@@ -152,7 +181,7 @@ Chạy bên trong thư mục job, trên Windows là `.\recap.cmd <lệnh>`:
 | `check` | tạo ảnh đối chiếu cho từng đoạn (khung hình đầu, giữa, cuối mỗi clip, có ghi mốc giây) để agent tự soát lời bình có khớp với hình không |
 | `sync` | tạo giọng đọc rồi so độ dài giọng thật với độ dài clip của từng đoạn, in `SYNC OK` hoặc đoạn nào thiếu/thừa hình |
 | `tts` | tạo giọng đọc cho từng đoạn → `tts/` |
-| `render` | dựng → `output/final.mp4` và `output/final.srt` |
+| `render` | dựng → `output/final.mp4`, `output/final.srt` (SRT hiển thị) và `output/final.voice.srt` (SRT voice) |
 | `info` | trạng thái job |
 
 Lệnh quản trị (chạy ở thư mục gốc): `.venv\Scripts\python.exe -m recap health | fetch-models | cleanup | update-ytdlp | update-tool | serve`.
@@ -179,7 +208,7 @@ Lệnh quản trị (chạy ở thư mục gốc): `.venv\Scripts\python.exe -m 
 ```
 recap/        mã nguồn (server, pipeline, agent, tts, render…)
 web/          giao diện
-presets/      hướng dẫn cho agent theo loại nội dung (film, show, lecture, game, vlog) — sửa được
+presets/      hướng dẫn cho agent theo loại nội dung (anime, film, show, lecture, game, vlog) — sửa được
 config/       settings.example.json (mặc định) · settings.json (cài đặt của máy này)
 jobs/<id>/    mỗi video một thư mục: source, transcript, frames, TASK.md, script.json, tts, output, log.txt
 models/       Whisper, Piper
@@ -189,6 +218,8 @@ docs/SPEC.md  phạm vi bàn giao và kiến trúc
 ```
 
 ## 10. Lịch sử phiên bản
+
+**v1.0.5** — ngách Anime / Donghua: loại nội dung riêng (`presets/anime.md`) với quy định chuẩn nguyên tác và văn phong recap anime; bảng tên riêng `glossary.json` cho từng job (tool tự thay cách đọc cho giọng máy, `validate` chặn tên viết sai); xuất 2 file phụ đề `final.srt` (hiển thị) và `final.voice.srt` (voice), thêm nút **Tải SRT voice** và **Nạp SRT voice đã sửa…** (sửa tay cách đọc rồi dựng lại, chỉ đoạn đã sửa tạo lại giọng); phụ đề không còn ngắt câu ở tên có chữ viết tắt ("Monkey D. Luffy") và không để sót dòng cuối 1–2 từ. Logo theo kênh: chọn logo của từng kênh ngay lúc tạo video, thêm logo kênh mới trên giao diện (`assets/logos`).
 
 **v1.0.4** — sửa lỗi mã hóa UTF-8 trong `install.ps1` trên Windows PowerShell 5.1 ở bước cài Python, bổ sung cơ chế dự phòng tải `uv`, kiểm tra lại PyTorch CUDA cho OmniVoice và thêm `.gitattributes` giữ chuẩn CRLF cho `.bat`/`.ps1`.
 

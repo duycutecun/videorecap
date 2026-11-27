@@ -84,6 +84,61 @@ def write_wrapper(project: Project) -> str:
     return "./recap.sh"
 
 
+def is_anime(opts: dict) -> bool:
+    """Ngách anime/donghua: bắt buộc bảng tên riêng theo nguyên tác (glossary.json) và xuất 2 file SRT."""
+    return (opts.get("content_type") or "") == "anime"
+
+
+ANIME_SECTION = """
+## Anime: source fidelity (REQUIRED for this job) - two subtitle tracks
+This recap produces TWO subtitle files from your script:
+- DISPLAY SRT (`output/final.srt`, also burned on the picture) = the `narration` text. Names and terms are spelled
+  exactly as in the original work.
+- VOICE SRT (`output/final.voice.srt`) = what the text-to-speech voice actually reads. The tool builds it from
+  `narration` by replacing every glossary name with its `read` form (or from `speak` if you wrote one).
+So: write names CORRECTLY in `narration`; never write phonetic spellings there.
+
+### Step 2b - Build `glossary.json` BEFORE writing script.json
+List every proper noun and special term the narration will use: characters, clans/organisations, places, techniques,
+weapons, titles, races, power-system words. UTF-8 JSON:
+```json
+{
+  "source": "<original title> - <season/episode or arc>",
+  "terms": [
+    {"name": "Monkey D. Luffy", "read": "mân ki đi lu phi", "type": "character", "note": "thuyền trưởng băng Mũ Rơm", "avoid": ["Rufi", "Luffi"]},
+    {"name": "Luffy", "read": "lu phi", "type": "character"},
+    {"name": "Gomu Gomu no Mi", "read": "gô mư gô mư nô mi", "type": "item", "note": "trái Cao Su"},
+    {"name": "Tiêu Viêm", "read": "", "type": "character", "avoid": ["Xiao Yan"]}
+  ]
+}
+```
+- `name`: the canonical spelling. Take it from the source itself first (on-screen text, credits, the subtitles/dialogue
+  in transcript.txt). If the transcript only gives a phonetic guess of a name (speech recognition often does), work
+  out the real name from the title/context; if you are able to search the web, confirm the official spelling there.
+  * Japanese anime: official romanised name (Hepburn / official English release), e.g. "Naruto", "Sasuke", "Tanjiro".
+    Do NOT turn Japanese names into Sino-Vietnamese.
+  * Chinese donghua: the Sino-Vietnamese (Hán Việt) name Vietnamese viewers use, e.g. "Tiêu Viêm", "Đường Tam" -
+    not pinyin.
+  * Techniques / terms: keep the original name; the first time it appears, the narration may add its meaning in
+    Vietnamese in a few words.
+  * Add the short form used in narration as its own entry too (full name AND given name).
+- `read`: how a Vietnamese speaker says it, in lowercase Vietnamese syllables ("sa su kê", "tan gi rô"). Required for
+  every name that is not already plain Vietnamese; leave "" for Vietnamese / Hán Việt names.
+- `avoid`: wrong or fan-made spellings you saw in the transcript - `validate` fails if one appears in the narration.
+- Use ONE spelling per name in the whole script. If you are not sure who a character is, do not guess a name:
+  describe them ("gã tóc bạc", "cô gái cầm kiếm") instead.
+`validate` reports an ERROR for a missing glossary, a name without `read`, an `avoid` spelling, or a phonetic spelling
+inside `narration`. You only need the `speak` field for the rare sentence where the automatic replacement is not
+enough (numbers, symbols, an odd abbreviation): then `speak` is the SAME sentence written fully as spoken.
+
+### Fidelity rules
+- Every fact in the narration (who did what, who won, who died, what a power does, how characters are related) must
+  be shown or said in THIS source. When unsure, leave it out.
+- Keep ranks, titles and relationships exactly as the source gives them; keep the outcome and order of events.
+- No details from other episodes, the manga/novel or the internet, and no spoilers beyond this video.
+"""
+
+
 def is_auto_length(opts: dict) -> bool:
     return ((opts.get("length") or "auto") == "auto" and not opts.get("target_minutes")
             and not opts.get("target_percent"))
@@ -160,6 +215,7 @@ Write your decision into script.json as `"target_minutes": <number>` and `"lengt
     style_section = STYLE_SECTION.replace("{style_line}", style_line).replace(
         "{pron_rules}", PRON_RULES if (opts.get("narration_language") or "vi") == "vi" else "")
     src_dur = float(project.state().get("source_duration") or 0)
+    anime_section = ANIME_SECTION if is_anime(opts) else ""
 
     finish = (f"""## Step 4 — Produce the video (AUTO mode)
 Run `{cmd} render` (the voice already exists from sync). Confirm that `output/final.mp4` exists. If a command fails, read the
@@ -289,6 +345,7 @@ Write `script.json` with exactly this structure (UTF-8 JSON):
   how long the narration takes to read (~{wpm} words per minute). If clips are a bit short, the tool stretches them
   inside the same scene; if longer, they are trimmed - but aim for a close match yourself.
 - `speak` (optional): how the voice should read the sentence when it has foreign words (see Pronunciation).
+  `narration` becomes the DISPLAY subtitles; `speak` (or narration + pronunciation tables) becomes the VOICE subtitles.
 - `original_audio_volume`: 0 normally; 0.1-0.3 only when the original sound adds impact (a scream, a key line).
 - Segments are in story order; keep the clips in each segment in chronological order.
 
@@ -316,6 +373,7 @@ and run `{cmd} sync` again until it prints `SYNC OK`.
 Re-running sync is cheap: unchanged narration is not regenerated. Do not change narration text just to fix timing
 unless there is no matching footage.
 {style_section}
+{anime_section}
 {check_step}
 {finish}
 {length_section}
